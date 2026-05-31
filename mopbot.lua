@@ -1,179 +1,245 @@
 --[[
-    MOB MANAGER V6 - (SMART MOVEMENT SYSTEM)
-    ✅ نظام التحريك بدل النقل (To prevent Anti-Teleport)
-    ✅ البحث عن Humanoid لإصدار أمر المشي
-    ✅ الحفاظ على نظام التحديد الشامل
-]]--
+    Smart Mob Scanner & Teleport - Black Edition
+    تطوير: Assistant AI & المدير
+    الوصف: سكريبت ذكي للتعرف على الموبات وعرضها في قائمة مع النقل السريع.
+]]
 
-local UserInputService = game:GetService("UserInputService")
 local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 local player = Players.LocalPlayer
-local camera = workspace.CurrentCamera
+local mouse = player:GetMouse()
 
-local targetCFrame = nil
-local savedMobNames = {} 
-local selectionMode = false
-local tempSelectedMob = nil 
+-- متغيرات التحكم
+local selectedMobName = ""
+local selectedMobPath = ""
+local isSelecting = false
 
--- دالة إيجاد الموب بالكامل
-local function findFullMob(part)
-    local current = part
-    while current and current ~= workspace do
-        if current:IsA("Model") and current:FindFirstChildOfClass("Humanoid") then
-            return current
-        end
-        current = current.Parent
-    end
-    return part:FindFirstAncestorOfClass("Model") or part
-end
-
-local function getFullPath(obj)
-    local path = obj.Name
-    local parent = obj.Parent
-    while parent and parent ~= game do
-        path = parent.Name .. "." .. path
-        parent = parent.Parent
-    end
-    return path
-end
-
-local selectionBox = Instance.new("SelectionBox")
-selectionBox.Color3 = Color3.fromRGB(255, 170, 0)
-selectionBox.LineThickness = 0.4
-selectionBox.Parent = workspace
-
--- ==================== الواجهة ====================
+-- إنشاء الواجهة
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "MobManagerV6"
+screenGui.Name = "SmartMobGui"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = player:WaitForChild("PlayerGui")
 
-local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 350, 0, 220)
-mainFrame.Position = UDim2.new(0.5, -175, 0.2, 0)
-mainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-mainFrame.Active = true
-mainFrame.Draggable = true 
-mainFrame.Parent = screenGui
-Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 10)
+-- دالة السحب (Draggable) للجوال
+local function makeDraggable(frame)
+    local dragging, dragInput, dragStart, startPos
+    frame.InputBegan:Connect(function(input)
+        if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+            dragging = true
+            dragStart = input.Position
+            startPos = frame.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then dragging = false end
+            end)
+        end
+    end)
+    frame.InputChanged:Connect(function(input)
+        if (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then dragInput = input end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            local delta = input.Position - dragStart
+            frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+end
 
+-- الإطار الرئيسي
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 220, 0, 300)
+mainFrame.Position = UDim2.new(0.5, -110, 0.3, 0)
+mainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+mainFrame.BorderSizePixel = 0
+mainFrame.ClipsDescendants = true
+mainFrame.Parent = screenGui
+makeDraggable(mainFrame)
+
+local mainCorner = Instance.new("UICorner")
+mainCorner.CornerRadius = UDim.new(0, 12)
+mainCorner.Parent = mainFrame
+
+-- زر الإغلاق (التصغير)
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0, 30, 0, 30)
+closeBtn.Position = UDim2.new(1, -35, 0, 5)
+closeBtn.Text = "X"
+closeBtn.TextColor3 = Color3.new(1, 0, 0)
+closeBtn.BackgroundTransparency = 1
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = 20
+closeBtn.Parent = mainFrame
+
+-- الزر الصغير (M)
+local miniBtn = Instance.new("TextButton")
+miniBtn.Size = UDim2.new(0, 50, 0, 50)
+miniBtn.Position = UDim2.new(0.5, -25, 0.05, 0)
+miniBtn.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+miniBtn.Text = "M"
+miniBtn.TextColor3 = Color3.new(1, 1, 1)
+miniBtn.Font = Enum.Font.GothamBold
+miniBtn.TextSize = 25
+miniBtn.Visible = false
+miniBtn.Parent = screenGui
+makeDraggable(miniBtn)
+
+local miniCorner = Instance.new("UICorner")
+miniCorner.CornerRadius = UDim.new(1, 0)
+miniCorner.Parent = miniBtn
+
+local miniStroke = Instance.new("UIStroke")
+miniStroke.Thickness = 3
+miniStroke.Parent = miniBtn
+
+-- تأثير قوس قزح
+spawn(function()
+    local h = 0
+    while wait() do
+        miniStroke.Color = Color3.fromHSV(h, 1, 1)
+        h = h + 0.01
+        if h > 1 then h = 0 end
+    end
+end)
+
+-- محتويات الواجهة
 local title = Instance.new("TextLabel")
-title.Text = "⚡ Mob Walker V6"
-title.Size = UDim2.new(1, 0, 0, 35)
-title.TextColor3 = Color3.fromRGB(255, 200, 0)
+title.Size = UDim2.new(1, 0, 0, 40)
+title.Text = "SMART SCANNER"
+title.TextColor3 = Color3.new(1, 1, 1)
 title.BackgroundTransparency = 1
 title.Font = Enum.Font.GothamBold
 title.Parent = mainFrame
 
-local infoLabel = Instance.new("TextLabel")
-infoLabel.Text = "حدد الموب وموقع التجمع"
-infoLabel.Size = UDim2.new(0.9, 0, 0, 45)
-infoLabel.Position = UDim2.new(0.05, 0, 0.18, 0)
-infoLabel.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-infoLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-infoLabel.TextSize = 11
-infoLabel.TextWrapped = true
-infoLabel.Font = Enum.Font.Code
-infoLabel.Parent = mainFrame
-Instance.new("UICorner", infoLabel)
+local scanStatus = Instance.new("TextLabel")
+scanStatus.Size = UDim2.new(0.9, 0, 0, 25)
+scanStatus.Position = UDim2.new(0.05, 0, 0.15, 0)
+scanStatus.Text = "Status: Idle"
+scanStatus.TextColor3 = Color3.fromRGB(150, 150, 150)
+scanStatus.BackgroundTransparency = 1
+scanStatus.Font = Enum.Font.Gotham
+scanStatus.Parent = mainFrame
 
--- ==================== الأزرار ====================
-local function createBtn(text, pos, size, color)
-    local btn = Instance.new("TextButton")
-    btn.Text = text
-    btn.Size = size
-    btn.Position = pos
-    btn.BackgroundColor3 = color
-    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    btn.Font = Enum.Font.GothamBold
-    btn.TextSize = 12
-    btn.Parent = mainFrame
-    Instance.new("UICorner", btn)
-    return btn
+local selectModeBtn = Instance.new("TextButton")
+selectModeBtn.Size = UDim2.new(0.9, 0, 0, 35)
+selectModeBtn.Position = UDim2.new(0.05, 0, 0.25, 0)
+selectModeBtn.Text = "START SELECTION"
+selectModeBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 215)
+selectModeBtn.TextColor3 = Color3.new(1, 1, 1)
+selectModeBtn.Font = Enum.Font.GothamBold
+selectModeBtn.Parent = mainFrame
+
+local scrollingFrame = Instance.new("ScrollingFrame")
+scrollingFrame.Size = UDim2.new(0.9, 0, 0, 130)
+scrollingFrame.Position = UDim2.new(0.05, 0, 0.45, 0)
+scrollingFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+scrollingFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+scrollingFrame.BorderSizePixel = 0
+scrollingFrame.ScrollBarThickness = 4
+scrollingFrame.Parent = mainFrame
+
+local uiListLayout = Instance.new("UIListLayout")
+uiListLayout.Parent = scrollingFrame
+uiListLayout.Padding = UDim.new(0, 5)
+
+-- منطق الاختيار
+selectModeBtn.MouseButton1Click:Connect(function()
+    isSelecting = not isSelecting
+    selectModeBtn.Text = isSelecting and "TAP A MOB..." or "START SELECTION"
+    selectModeBtn.BackgroundColor3 = isSelecting and Color3.fromRGB(200, 150, 0) or Color3.fromRGB(0, 120, 215)
+end)
+
+local function createMobEntry(mob)
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(1, -10, 0, 40)
+    frame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    
+    local nameLabel = Instance.new("TextLabel")
+    nameLabel.Size = UDim2.new(0.7, 0, 1, 0)
+    nameLabel.Text = " " .. mob.Name
+    nameLabel.TextColor3 = Color3.new(1, 1, 1)
+    nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.TextScaled = true
+    nameLabel.Parent = frame
+    
+    local tpBtn = Instance.new("TextButton")
+    tpBtn.Size = UDim2.new(0.25, 0, 0.8, 0)
+    tpBtn.Position = UDim2.new(0.7, 0, 0.1, 0)
+    tpBtn.Text = "TP"
+    tpBtn.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
+    tpBtn.TextColor3 = Color3.new(1, 1, 1)
+    tpBtn.Parent = frame
+    
+    tpBtn.MouseButton1Click:Connect(function()
+        if mob:FindFirstChild("HumanoidRootPart") then
+            player.Character:PivotTo(mob.HumanoidRootPart.CFrame)
+        end
+    end)
+    
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, 4)
+    c.Parent = tpBtn
+    
+    local c2 = Instance.new("UICorner")
+    c2.CornerRadius = UDim.new(0, 4)
+    c2.Parent = frame
+    
+    frame.Parent = scrollingFrame
+    scrollingFrame.CanvasSize = UDim2.new(0, 0, 0, uiListLayout.AbsoluteContentSize.Y)
 end
 
-local posBtn = createBtn("📍 تحديد نقطة التجمع", UDim2.new(0.05, 0, 0.42, 0), UDim2.new(0.43, 0, 0, 35), Color3.fromRGB(60, 60, 60))
-local selectBtn = createBtn("🔍 وضع التحديد: OFF", UDim2.new(0.52, 0, 0.42, 0), UDim2.new(0.43, 0, 0, 35), Color3.fromRGB(150, 0, 0))
-
-local confirmBtn = createBtn("✅ تأكيد الموب", UDim2.new(0.05, 0, 0.61, 0), UDim2.new(0.9, 0, 0, 35), Color3.fromRGB(0, 100, 200))
-confirmBtn.Visible = false
-
-local moveBtn = createBtn("🏃 استدعاء الموبات (مشي)", UDim2.new(0.05, 0, 0.8, 0), UDim2.new(0.43, 0, 0, 35), Color3.fromRGB(0, 120, 60))
-local clearBtn = createBtn("🗑️ مسح", UDim2.new(0.52, 0, 0.8, 0), UDim2.new(0.43, 0, 0, 35), Color3.fromRGB(100, 0, 0))
-
--- ==================== المنطق البرمجي ====================
-
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    if selectionMode and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1) then
-        local unitRay = camera:ScreenPointToRay(input.Position.X, input.Position.Y)
-        local raycastResult = workspace:Raycast(unitRay.Origin, unitRay.Direction * 1000)
+-- رصد اللمس
+UserInputService.InputBegan:Connect(function(input, processed)
+    if processed or not isSelecting then return end
+    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        local unitRay = workspace.CurrentCamera:ScreenPointToRay(input.Position.X, input.Position.Y)
+        local result = workspace:Raycast(unitRay.Origin, unitRay.Direction * 1000)
         
-        if raycastResult and raycastResult.Instance then
-            local fullMob = findFullMob(raycastResult.Instance)
-            if fullMob then
-                tempSelectedMob = fullMob
-                selectionBox.Adornee = fullMob
-                infoLabel.Text = "المختار: " .. fullMob.Name
-                confirmBtn.Visible = true
+        if result and result.Instance then
+            local model = result.Instance:FindFirstAncestorOfClass("Model")
+            if model and model:FindFirstChild("Humanoid") then
+                -- تأكيد الموب
+                selectedMobName = model.Name
+                selectedMobPath = model:GetFullName()
+                scanStatus.Text = "Selected: " .. selectedMobName
+                scanStatus.TextColor3 = Color3.new(0, 1, 0)
+                
+                -- تحديث القائمة
+                for _, child in pairs(scrollingFrame:GetChildren()) do
+                    if child:IsA("Frame") then child:Destroy() end
+                end
+                
+                -- البحث عن كل الموبات من نفس النوع
+                for _, obj in pairs(workspace:GetDescendants()) do
+                    if obj:IsA("Model") and obj.Name == selectedMobName and obj:FindFirstChild("Humanoid") then
+                        createMobEntry(obj)
+                    end
+                end
+                
+                isSelecting = false
+                selectModeBtn.Text = "START SELECTION"
+                selectModeBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 215)
             end
         end
     end
 end)
 
-confirmBtn.MouseButton1Click:Connect(function()
-    if tempSelectedMob then
-        if not table.find(savedMobNames, tempSelectedMob.Name) then
-            table.insert(savedMobNames, tempSelectedMob.Name)
-            infoLabel.Text = "✅ تمت إضافة: " .. tempSelectedMob.Name
-        end
-        confirmBtn.Visible = false
-        selectionBox.Adornee = nil
-        tempSelectedMob = nil
+-- أزرار التصغير
+closeBtn.MouseButton1Click:Connect(function()
+    mainFrame.Visible = false
+    miniBtn.Visible = true
+end)
+
+miniBtn.MouseButton1Click:Connect(function()
+    mainFrame.Visible = true
+    miniBtn.Visible = false
+end)
+
+-- لمسة جمالية لكل الأزرار
+for _, v in pairs(mainFrame:GetChildren()) do
+    if v:IsA("TextButton") then
+        local c = Instance.new("UICorner")
+        c.CornerRadius = UDim.new(0, 8)
+        c.Parent = v
     end
-end)
-
-posBtn.MouseButton1Click:Connect(function()
-    if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-        targetCFrame = player.Character.HumanoidRootPart.CFrame
-        posBtn.Text = "✅ تم تحديد النقطة"
-        task.wait(1)
-        posBtn.Text = "📍 تحديث النقطة"
-    end
-end)
-
-selectBtn.MouseButton1Click:Connect(function()
-    selectionMode = not selectionMode
-    selectBtn.Text = selectionMode and "🔍 وضع التحديد: ON" or "🔍 وضع التحديد: OFF"
-    selectBtn.BackgroundColor3 = selectionMode and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(150, 0, 0)
-end)
-
--- دالة التحريك (MoveTo) بدلاً من النقل (Teleport)
-moveBtn.MouseButton1Click:Connect(function()
-    if not targetCFrame or #savedMobNames == 0 then
-        infoLabel.Text = "❌ حدد الموقع والموبات أولاً"
-        return
-    end
-
-    local count = 0
-    for _, item in pairs(workspace:GetDescendants()) do
-        if item:IsA("Model") and table.find(savedMobNames, item.Name) then
-            local hum = item:FindFirstChildOfClass("Humanoid")
-            if hum then
-                -- إعطاء أمر المشي للنقطة المحددة مع عشوائية بسيطة لكي لا يتكدسوا فوق بعض
-                local offset = Vector3.new(math.random(-3,3), 0, math.random(-3,3))
-                hum:MoveTo(targetCFrame.Position + offset)
-                count = count + 1
-            end
-        end
-    end
-    infoLabel.Text = "🏃 جاري تحريك " .. count .. " موب..."
-end)
-
-clearBtn.MouseButton1Click:Connect(function()
-    savedMobNames = {}
-    infoLabel.Text = "🗑️ القائمة فارغة"
-end)
-
-local close = createBtn("X", UDim2.new(1, -25, 0, 5), UDim2.new(0, 20, 0, 20), Color3.fromRGB(200, 0, 0))
-close.MouseButton1Click:Connect(function() screenGui:Destroy() end)
+end
