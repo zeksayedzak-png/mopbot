@@ -1,5 +1,5 @@
 -- =====================================================
--- 🧠 GUI EXECUTOR + LOADSTRING HOOK
+-- 🧠 BYTECODE CAPTURER (تقريباً)
 -- =====================================================
 
 local Players = game:GetService("Players")
@@ -7,19 +7,19 @@ local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 
 -- =====================================================
--- متغير لتخزين الكود النظيف
+-- متغير لتخزين الكود النظيف (اللي بيتحول لـ Bytecode)
 -- =====================================================
 local cleanCode = ""
 
 -- =====================================================
--- Hook على loadstring (بيخزن الكود النظيف)
+-- Hook على loadstring (نسخ الكود النظيف)
 -- =====================================================
 local oldLoadstring = loadstring
 
 loadstring = function(code, chunkname)
     if code and #code > 10 then
         cleanCode = code
-        print("📜 Clean code captured!")
+        print("📜 Clean code captured! (will become Bytecode)")
     end
     return oldLoadstring(code, chunkname)
 end
@@ -28,7 +28,7 @@ end
 -- واجهة المستخدم
 -- =====================================================
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "ExecutorHook"
+ScreenGui.Name = "BytecodeCapturer"
 ScreenGui.Parent = LocalPlayer.PlayerGui
 ScreenGui.ResetOnSpawn = false
 
@@ -42,7 +42,7 @@ MainFrame.ClipsDescendants = true
 MainFrame.Parent = ScreenGui
 Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 14)
 
--- شريط العنوان (للسحب)
+-- شريط العنوان
 local TitleBar = Instance.new("Frame")
 TitleBar.Size = UDim2.new(1, 0, 0, 30)
 TitleBar.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
@@ -54,7 +54,7 @@ local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Size = UDim2.new(0.7, 0, 1, 0)
 TitleLabel.Position = UDim2.new(0, 8, 0, 0)
 TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "🧠 Executor + Hook"
+TitleLabel.Text = "🧠 Bytecode Capturer"
 TitleLabel.TextColor3 = Color3.fromRGB(0, 255, 200)
 TitleLabel.Font = Enum.Font.GothamBold
 TitleLabel.TextSize = 13
@@ -89,10 +89,10 @@ local ExecBtn = Instance.new("TextButton")
 ExecBtn.Size = UDim2.new(0.8, 0, 0, 35)
 ExecBtn.Position = UDim2.new(0.1, 0, 0.28, 0)
 ExecBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 200)
-ExecBtn.Text = "⚡ Execute & Capture"
+ExecBtn.Text = "⚡ Execute & Capture Bytecode"
 ExecBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 ExecBtn.Font = Enum.Font.GothamBold
-ExecBtn.TextSize = 13
+ExecBtn.TextSize = 12
 ExecBtn.Parent = MainFrame
 Instance.new("UICorner", ExecBtn).CornerRadius = UDim.new(0, 8)
 
@@ -109,7 +109,7 @@ local CodeLabel = Instance.new("TextLabel")
 CodeLabel.Size = UDim2.new(1, -10, 0, 100)
 CodeLabel.Position = UDim2.new(0, 5, 0, 5)
 CodeLabel.BackgroundTransparency = 1
-CodeLabel.Text = "📄 Clean code will appear here..."
+CodeLabel.Text = "📄 Clean code (-> Bytecode) will appear here..."
 CodeLabel.TextColor3 = Color3.fromRGB(180, 180, 200)
 CodeLabel.Font = Enum.Font.Gotham
 CodeLabel.TextSize = 10
@@ -210,11 +210,10 @@ ExecBtn.MouseButton1Click:Connect(function()
         if func then
             task.spawn(function()
                 pcall(func)
-                -- عرض الكود النظيف
                 if cleanCode ~= "" then
                     CodeLabel.Text = cleanCode
                     CodeBox.CanvasSize = UDim2.new(0, 0, 0, #cleanCode / 2 + 50)
-                    StatusLabel.Text = "✅ Code captured!"
+                    StatusLabel.Text = "✅ Code captured! (-> Bytecode)"
                     StatusLabel.TextColor3 = Color3.fromRGB(0, 255, 100)
                 else
                     StatusLabel.Text = "⚠️ No code captured!"
@@ -244,9 +243,9 @@ end)
 
 ClearBtn.MouseButton1Click:Connect(function()
     cleanCode = ""
-    CodeLabel.Text = "📄 Clean code will appear here..."
+    CodeLabel.Text = "📄 Clean code (-> Bytecode) will appear here..."
     StatusLabel.Text = "🗑️ Cleared!"
     StatusLabel.TextColor3 = Color3.fromRGB(255, 200, 0)
 end)
 
-print("🧠 GUI Executor + Hook is ready!")
+print("🧠 Bytecode Capturer is ready!")
